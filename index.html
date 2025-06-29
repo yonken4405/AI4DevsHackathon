@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIRA - Emergency AI Assistant</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      height: 100vh;
+      background: #f0f0f0;
+      text-align: center;
+    }
+
+    h1 {
+      margin-bottom: 1rem;
+    }
+
+    #status {
+      margin: 1rem 0;
+      color: #333;
+    }
+
+    button {
+      padding: 1rem 2rem;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: 8px;
+      background-color: #ff5252;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:active {
+      background-color: #d43d3d;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      button {
+        width: 100%;
+        font-size: 1rem;
+        padding: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>AIRA - Emergency AI</h1>
+  <p>Tap the button and speak your emergency.</p>
+
+  <button id="recordBtn">🎙️ Tap to Speak</button>
+  
+  <div id="status">Awaiting input...</div>
+
+  <script>
+    const recordBtn = document.getElementById('recordBtn');
+    const statusDiv = document.getElementById('status');
+    let recognition;
+
+    if ('webkitSpeechRecognition' in window) {
+      recognition = new webkitSpeechRecognition();
+      console.log("Speech recognition supported.");
+    } else {
+      alert("Speech recognition not supported on this browser. Please use Chrome.");
+    }
+
+    recognition.continuous = false;
+    recognition.lang = 'en-US';
+
+    // Debugging Events
+    recognition.onaudiostart = () => console.log("Audio capturing started.");
+    recognition.onaudioend = () => console.log("Audio capturing ended.");
+    recognition.onsoundstart = () => console.log("Sound detected.");
+    recognition.onsoundend = () => console.log("Sound ended.");
+    recognition.onspeechstart = () => console.log("Speech detected.");
+    recognition.onspeechend = () => console.log("Speech ended.");
+    recognition.onend = () => console.log("Speech recognition ended.");
+    recognition.onnomatch = () => console.log("No speech recognized.");
+    recognition.onerror = (event) => {
+      console.error("Speech recognition error:", event.error);
+      statusDiv.textContent = "Error during recognition: " + event.error;
+    };
+
+    // Trigger with a tap
+    recordBtn.addEventListener('click', () => {
+      statusDiv.textContent = "🎙️ Listening...";
+      console.log("Started recording...");
+      recognition.start();
+    });
+
+    recognition.onresult = function(event) {
+      const transcript = event.results[0][0].transcript;
+      console.log("Transcript captured:", transcript);
+      statusDiv.textContent = `You said: "${transcript}"`;
+
+      getLocationAndSend(transcript);
+    };
+
+    function getLocationAndSend(text) {
+      console.log("Getting location...");
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          console.log("Location obtained:", lat, lng);
+
+          const apiKey = "ab1bf1ce39ae49dbb45ffa8b884b97fb";
+          const apiUrl = `https://api.opencagedata.com/geocode/v1/json?q=${lat}+${lng}&key=${apiKey}`;
+
+          fetch(apiUrl)
+            .then(response => response.json())
+            .then(data => {
+              if (data.results && data.results.length > 0) {
+                const location = data.results[0].components.city || 
+                                 data.results[0].components.town || 
+                                 data.results[0].components.village || 
+                                 data.results[0].components.state || 
+                                 "Unknown";
+                console.log("Reverse geocoded location:", location);
+
+                sendToN8N(text, lat, lng, location);
+              } else {
+                statusDiv.textContent = "Failed to get location name.";
+                console.error("No reverse geocoding results.");
+              }
+            })
+            .catch((error) => {
+              console.error("Reverse geocoding error:", error);
+              statusDiv.textContent = "Error with reverse geocoding.";
+            });
+        }, function() {
+          statusDiv.textContent = "Location access denied.";
+          console.error("Geolocation access denied.");
+        });
+      } else {
+        statusDiv.textContent = "Geolocation not supported.";
+        console.error("Geolocation not supported.");
+      }
+    }
+
+    function sendToN8N(text, lat, lng, location) {
+      console.log("Sending to n8n:", { text, lat, lng, location });
+
+      const webhookUrl = "http://localhost:5680/webhook-test/c1bbc699-15e0-4e30-816b-4ca72f4e577d";
+
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text, lat, lng, location })
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log("Response from n8n:", data);
+        statusDiv.textContent = `✅ ${data.message}`;
+      })
+      .catch(err => {
+        console.error("Error sending to n8n:", err);
+        statusDiv.textContent = "Failed to send alert.";
+      });
+    }
+  </script>
+
+</body>
+</html>
