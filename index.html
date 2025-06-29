@@ -48,11 +48,6 @@
       margin-bottom: 1rem;
     }
 
-    #status {
-      margin: 1rem 0;
-      color: #333;
-    }
-
     button {
       padding: 1rem 2rem;
       font-size: 1.2rem;
@@ -86,10 +81,29 @@
       nav a {
         margin: 0.3rem 0;
       }
+
+      
     }
+
+    .panicBtn {
+  margin: 0.5rem;
+  padding: 1rem 2rem;
+  font-size: 1rem;
+  background-color: #555;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.panicBtn:active {
+  background-color: #333;
+}
+
   </style>
 </head>
 <body>
+<audio id="chime" src="./audio/beep.mp3" preload="auto"></audio>
 
 <nav>
   <a href="index.html">Report Emergency</a>
@@ -98,63 +112,64 @@
 
 <main>
   <h1>AIRA - Emergency AI</h1>
-  <p>Tap the button and speak your emergency.</p>
+  <div style="margin-top: 2rem;">
+  <p><b>Quick Panic Buttons (Double Tap):</b></p>
+  <button class="panicBtn" data-type="Fire">🔥 Fire</button>
+  <button class="panicBtn" data-type="Medical">🚑 Medical</button>
+  <button class="panicBtn" data-type="Crime">🚔 Crime</button>
+</div>
 
+  <p>Tap the button and speak your emergency.</p>
   <button id="recordBtn">🎙️ Tap to Speak</button>
-  
-  <div id="status">Awaiting input...</div>
 </main>
 
 <script>
+    let availableVoices = [];
+
+window.speechSynthesis.onvoiceschanged = () => {
+  availableVoices = window.speechSynthesis.getVoices();
+};
+
   const recordBtn = document.getElementById('recordBtn');
-  const statusDiv = document.getElementById('status');
-  let recognition;
+const chime = document.getElementById('chime');
+let recognition;
 
-  if ('webkitSpeechRecognition' in window) {
-    recognition = new webkitSpeechRecognition();
-    console.log("Speech recognition supported.");
-  } else {
-    alert("Speech recognition not supported on this browser. Please use Chrome.");
-  }
+if ('webkitSpeechRecognition' in window) {
+  recognition = new webkitSpeechRecognition();
+} else {
+  alert("Speech recognition not supported on this browser. Please use Chrome.");
+}
 
-  recognition.continuous = false;
-  recognition.lang = 'en-US';
+recognition.continuous = false;
+recognition.lang = 'en-US';
 
-  recognition.onaudiostart = () => console.log("Audio capturing started.");
-  recognition.onaudioend = () => console.log("Audio capturing ended.");
-  recognition.onsoundstart = () => console.log("Sound detected.");
-  recognition.onsoundend = () => console.log("Sound ended.");
-  recognition.onspeechstart = () => console.log("Speech detected.");
-  recognition.onspeechend = () => console.log("Speech ended.");
-  recognition.onend = () => console.log("Speech recognition ended.");
-  recognition.onnomatch = () => console.log("No speech recognized.");
-  recognition.onerror = (event) => {
-    console.error("Speech recognition error:", event.error);
-    statusDiv.textContent = "Error during recognition: " + event.error;
-  };
+recognition.onerror = (event) => {
+  speak(`Sorry, I didn't catch that. Please try again.`);
+  recordBtn.disabled = false;
+};
 
-  recordBtn.addEventListener('click', () => {
-    statusDiv.textContent = "🎙️ Listening...";
-    console.log("Started recording...");
-    recognition.start();
-  });
+recognition.onend = () => {
+  recordBtn.disabled = false;
+};
 
-  recognition.onresult = function(event) {
-    const transcript = event.results[0][0].transcript;
-    console.log("Transcript captured:", transcript);
-    statusDiv.textContent = `You said: "${transcript}"`;
-    getLocationAndSend(transcript);
-  };
+recordBtn.addEventListener('click', () => {
+  chime.play();
+  recordBtn.disabled = true;
+  recognition.start();
+});
 
-  function getLocationAndSend(text) {
-  console.log("Getting location...");
+recognition.onresult = function(event) {
+  const transcript = event.results[0][0].transcript;
+  console.log("Transcript captured:", transcript);
+  getLocationAndSend(transcript);
+};
 
+function getLocationAndSend(text) {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       function(position) {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        console.log("Location obtained:", lat, lng);
 
         const apiKey = "ab1bf1ce39ae49dbb45ffa8b884b97fb";
         const apiUrl = `https://api.opencagedata.com/geocode/v1/json?q=${lat}+${lng}&key=${apiKey}`;
@@ -162,63 +177,137 @@
         fetch(apiUrl)
           .then(response => response.json())
           .then(data => {
-            if (data.results && data.results.length > 0) {
-              const location = data.results[0].components.city || 
-                               data.results[0].components.town || 
-                               data.results[0].components.village || 
-                               data.results[0].components.state || 
-                               "Unknown";
-              console.log("Reverse geocoded location:", location);
-              sendToN8N(text, lat, lng, location);
-            } else {
-              statusDiv.textContent = "Failed to get location name.";
-              console.error("No reverse geocoding results.");
-            }
+            const location = (data.results[0].components.city || 
+                              data.results[0].components.town || 
+                              data.results[0].components.village || 
+                              data.results[0].components.state || 
+                              "your area");
+            sendToN8N(text, lat, lng, location);
           })
-          .catch((error) => {
-            console.error("Reverse geocoding error:", error);
-            statusDiv.textContent = "Error with reverse geocoding.";
+          .catch(() => {
+            speak("I couldn't determine your exact location, but your emergency is recorded.");
+            sendToN8N(text, lat, lng, "Unknown");
           });
       },
       function() {
-        statusDiv.textContent = "Location access denied.";
-        console.error("Geolocation access denied.");
+        speak("Location access denied. I will still report your emergency.");
+        sendToN8N(text, 0, 0, "Unknown");
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,   // Optional: 10-second timeout
-        maximumAge: 0     // Don't use a cached location
+        timeout: 10000,
+        maximumAge: 0
       }
     );
   } else {
-    statusDiv.textContent = "Geolocation not supported.";
-    console.error("Geolocation not supported.");
+    speak("Geolocation is not supported. I will still report your emergency.");
+    sendToN8N(text, 0, 0, "Unknown");
+  }
+}
+
+function sendToN8N(text, lat, lng, location) {
+  const webhookUrl = "http://localhost:5680/webhook/c1bbc699-15e0-4e30-816b-4ca72f4e577d";
+
+  fetch(webhookUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ text, lat, lng, location })
+  })
+  .then(response => response.json())
+  .then(() => {
+    provideAdvice(location);
+  })
+  .catch(() => {
+    speak("I failed to send the alert. Please try again.");
+  });
+}
+
+function provideAdvice(location) {
+  const advice = `Emergency reported. Stay calm. If it's safe, go to a nearby open area or barangay hall in ${location}. Listen for updates.`;
+  speak(advice);
+}
+
+function speak(message) {
+  const synth = window.speechSynthesis;
+  const utterance = new SpeechSynthesisUtterance(message);
+
+  const voices = synth.getVoices();
+  const femaleVoice = voices.find(voice => 
+    voice.name.toLowerCase().includes('female') || 
+    voice.name.toLowerCase().includes('woman') || 
+    voice.name.toLowerCase().includes('google us english') || 
+    (voice.lang === 'en-US' && voice.name.toLowerCase().includes('english'))
+  );
+
+  if (femaleVoice) {
+    utterance.voice = femaleVoice;
+  } else {
+    console.warn("Preferred female voice not found, using default.");
+  }
+
+  synth.speak(utterance);
+}
+
+
+const panicButtons = document.querySelectorAll('.panicBtn');
+let lastTapTime = 0;
+
+panicButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const now = Date.now();
+    if (now - lastTapTime < 400) {
+      // Double-tap detected
+      const type = btn.getAttribute('data-type');
+      triggerPanic(type);
+    }
+    lastTapTime = now;
+  });
+});
+
+function triggerPanic(type) {
+  speak(`${type} emergency reported.`);
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(position) {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+
+        const apiKey = "ab1bf1ce39ae49dbb45ffa8b884b97fb";
+        const apiUrl = `https://api.opencagedata.com/geocode/v1/json?q=${lat}+${lng}&key=${apiKey}`;
+
+        fetch(apiUrl)
+          .then(response => response.json())
+          .then(data => {
+            const location = (data.results[0].components.city || 
+                              data.results[0].components.town || 
+                              data.results[0].components.village || 
+                              data.results[0].components.state || 
+                              "your area");
+            sendToN8N(`${type} emergency!`, lat, lng, location);
+          })
+          .catch(() => {
+            sendToN8N(`${type} emergency!`, lat, lng, "Unknown");
+          });
+      },
+      function() {
+        sendToN8N(`${type} emergency!`, 0, 0, "Unknown");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
+  } else {
+    sendToN8N(`${type} emergency!`, 0, 0, "Unknown");
   }
 }
 
 
-  function sendToN8N(text, lat, lng, location) {
-    console.log("Sending to n8n:", { text, lat, lng, location });
 
-    const webhookUrl = "http://localhost:5680/webhook/c1bbc699-15e0-4e30-816b-4ca72f4e577d";
-
-    fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ text, lat, lng, location })
-    })
-    .then(response => response.json())
-    .then(data => {
-      console.log("Response from n8n:", data);
-      statusDiv.textContent = "✅ Help has been alerted. Stay calm, assistance is on the way.";
-    })
-    .catch(err => {
-      console.error("Error sending to n8n:", err);
-      statusDiv.textContent = "Failed to send alert.";
-    });
-  }
 </script>
 
 </body>

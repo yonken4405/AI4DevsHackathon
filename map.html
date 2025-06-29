@@ -51,6 +51,15 @@
       flex: 1;
     }
 
+    #analysis {
+      width: 300px;
+      max-width: 100%;
+      overflow-y: auto;
+      background: #f7f7f7;
+      border-left: 1px solid #ddd;
+      padding: 1rem;
+    }
+
     h2 {
       margin-top: 0;
     }
@@ -67,15 +76,15 @@
       cursor: pointer;
     }
 
-    @media (max-width: 800px) {
+    @media (max-width: 1000px) {
       .content {
         flex-direction: column;
       }
 
-      #sidebar {
+      #sidebar, #analysis {
         width: 100%;
         max-height: 200px;
-        border-right: none;
+        border: none;
         border-bottom: 1px solid #ddd;
       }
 
@@ -97,7 +106,13 @@
     <h2>Nearby Alerts</h2>
     <div id="alertList">Loading...</div>
   </div>
+
   <div id="map"></div>
+
+  <div id="analysis">
+    <h2>AI Danger Analysis</h2>
+    <div id="aiAdvice">Analyzing your area...</div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -146,7 +161,7 @@
   let userLng = null;
 
   function calculateDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371; // km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
     const a = 
@@ -174,25 +189,8 @@
           return !isNaN(lat) && !isNaN(lng) && calculateDistance(userLat, userLng, lat, lng) <= 5;
         });
 
-        const alertList = document.getElementById('alertList');
-        if (nearbyAlerts.length === 0) {
-          alertList.textContent = "No nearby alerts.";
-        } else {
-          alertList.innerHTML = "";
-          nearbyAlerts.forEach(alert => {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = "alert-item";
-            alertDiv.innerHTML = `
-              <b>${alert.Type}</b> - ${alert.Location}<br>
-              ${alert.Text}<br>
-              <small>${alert.Timestamp}</small>
-            `;
-            alertDiv.addEventListener('click', () => {
-              map.setView([alert.Latitude, alert.Longitude], 15);
-            });
-            alertList.appendChild(alertDiv);
-          });
-        }
+        displayAlerts(nearbyAlerts);
+        analyzeArea(nearbyAlerts);
 
         data.forEach(alert => {
           const lat = parseFloat(alert.Latitude);
@@ -216,12 +214,70 @@
       }, () => {
         console.warn("Location access denied.");
         document.getElementById('alertList').textContent = "Cannot detect location.";
+        document.getElementById('aiAdvice').textContent = "Cannot analyze dangers without location.";
       });
     })
     .catch(err => {
       console.error(err);
       document.getElementById('alertList').textContent = "Failed to load alerts.";
+      document.getElementById('aiAdvice').textContent = "Failed to analyze area.";
     });
+
+  function displayAlerts(nearbyAlerts) {
+    const alertList = document.getElementById('alertList');
+    if (nearbyAlerts.length === 0) {
+      alertList.textContent = "No nearby alerts.";
+    } else {
+      alertList.innerHTML = "";
+      nearbyAlerts.forEach(alert => {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = "alert-item";
+        alertDiv.innerHTML = `
+          <b>${alert.Type}</b> - ${alert.Location}<br>
+          ${alert.Text}<br>
+          <small>${alert.Timestamp}</small>
+        `;
+        alertDiv.addEventListener('click', () => {
+          map.setView([alert.Latitude, alert.Longitude], 15);
+        });
+        alertList.appendChild(alertDiv);
+      });
+    }
+  }
+
+  function analyzeArea(alerts) {
+    const aiAdvice = document.getElementById('aiAdvice');
+    const types = alerts.map(a => a.Type);
+    let adviceText = "";
+
+    if (types.includes("Fire")) {
+      adviceText += `<b>Fire Risk Detected:</b><br>
+      🔥 Stay alert for smoke or unusual heat.<br>
+      🚪 Know exit routes.<br>
+      🧯 Prepare fire extinguisher if available.<br><br>`;
+    }
+
+    if (types.includes("Crime")) {
+      adviceText += `<b>Crime Risk Nearby:</b><br>
+      🚔 Be cautious in dark or isolated areas.<br>
+      🧑‍🤝‍🧑 Travel in groups if possible.<br>
+      📞 Keep emergency contacts ready.<br><br>`;
+    }
+
+    if (types.includes("Medical")) {
+      adviceText += `<b>Ongoing Medical Emergency:</b><br>
+      🩺 Avoid congested areas to allow emergency responders access.<br>
+      🚑 If you feel unwell, seek medical help.<br><br>`;
+    }
+
+    if (adviceText === "") {
+      adviceText = "✅ No specific dangers detected in your area. Stay prepared.";
+    } else {
+      adviceText += "<b>General Advice:</b><br>📱 Keep your phone charged.<br>🧳 Prepare a small emergency kit.<br>📢 Follow instructions from local authorities.";
+    }
+
+    aiAdvice.innerHTML = adviceText;
+  }
 </script>
 
 </body>
