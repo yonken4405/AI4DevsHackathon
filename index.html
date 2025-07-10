@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AIRA - Emergency AI Assistant</title>
+  <title>AIRA - AI Responsive Alert</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -207,7 +207,7 @@ function getLocationAndSend(text) {
 }
 
 function sendToN8N(text, lat, lng, location) {
-  const webhookUrl = "http://localhost:5680/webhook/c1bbc699-15e0-4e30-816b-4ca72f4e577d";
+  const webhookUrl = "https://n8n-yrm3.onrender.com/webhook/c1bbc699-15e0-4e30-816b-4ca72f4e577d";
 
   fetch(webhookUrl, {
     method: 'POST',
