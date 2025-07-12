@@ -125,45 +125,83 @@
 </main>
 
 <script>
-    let availableVoices = [];
 
+let availableVoices = [];
+let recognition;
+let isListening = false;
+let webhookUrl = "http://localhost:5680/webhook/c1bbc699-15e0-4e30-816b-4ca72f4e577d";
+
+// Load voices
 window.speechSynthesis.onvoiceschanged = () => {
   availableVoices = window.speechSynthesis.getVoices();
 };
 
-  const recordBtn = document.getElementById('recordBtn');
-const chime = document.getElementById('chime');
-let recognition;
-
+// Initialize speech recognition
 if ('webkitSpeechRecognition' in window) {
   recognition = new webkitSpeechRecognition();
+  recognition.continuous = false;
+  recognition.lang = 'en-US';
 } else {
-  alert("Speech recognition not supported on this browser. Please use Chrome.");
+  alert("Speech recognition not supported. Use Chrome.");
 }
 
-recognition.continuous = false;
-recognition.lang = 'en-US';
-
 recognition.onerror = (event) => {
-  speak(`Sorry, I didn't catch that. Please try again.`);
-  recordBtn.disabled = false;
+  speak("Sorry, I didn't catch that. Please try again.");
+  isListening = false;
 };
 
 recognition.onend = () => {
-  recordBtn.disabled = false;
+  isListening = false;
 };
 
+// Start listening with a prompt
 recordBtn.addEventListener('click', () => {
-  chime.play();
-  recordBtn.disabled = true;
-  recognition.start();
+  if (!isListening) {
+    chime.play();
+    isListening = true;
+    recognition.start();
+  }
 });
 
 recognition.onresult = function(event) {
   const transcript = event.results[0][0].transcript;
-  console.log("Transcript captured:", transcript);
-  getLocationAndSend(transcript);
+  console.log("Heard:", transcript);
+  respondToUser(transcript);
 };
+
+function respondToUser(input) {
+  if (!input) {
+    speak("Sorry, I didn’t hear anything. Try again?");
+    return;
+  }
+
+  // Basic AI-like interpretation
+  const emergencyType = detectEmergencyType(input);
+  const summary = emergencyType ? `${emergencyType} emergency reported.` : "Emergency reported.";
+  speak(summary);
+
+  getLocationAndSend(input);
+}
+
+// Very basic keyword match
+function detectEmergencyType(text) {
+  const lowered = text.toLowerCase();
+  if (lowered.includes("fire")) return "Fire";
+  if (lowered.includes("medical") || lowered.includes("injured")) return "Medical";
+  if (lowered.includes("crime") || lowered.includes("robbed") || lowered.includes("stabbed")) return "Crime";
+  return null;
+}
+
+// TTS with fallback
+function speak(message) {
+  const synth = window.speechSynthesis;
+  const utter = new SpeechSynthesisUtterance(message);
+  const voice = synth.getVoices().find(v =>
+    v.name.toLowerCase().includes("english") && v.lang === "en-US"
+  );
+  if (voice) utter.voice = voice;
+  synth.speak(utter);
+}
 
 function getLocationAndSend(text) {
   if (navigator.geolocation) {
@@ -178,12 +216,17 @@ function getLocationAndSend(text) {
         fetch(apiUrl)
           .then(response => response.json())
           .then(data => {
-            const location = (data.results[0].components.city || 
-                              data.results[0].components.town || 
-                              data.results[0].components.village || 
-                              data.results[0].components.state || 
-                              "your area");
-            sendToN8N(text, lat, lng, location);
+            // const location = (data.results[0].components.city || 
+            //                   data.results[0].components.town || 
+            //                   data.results[0].components.village || 
+            //                   data.results[0].components.state || 
+            //                   "your area");
+            const components = data.results[0].components;
+            const barangay = components.suburb || components.neighbourhood || components.village || components.town || "Unknown";
+            const city = components.city || components.municipality || components.state || "Unknown";
+            const fullLocation = `${barangay}, ${city}`;
+
+            sendToN8N(text, lat, lng, fullLocation);
           })
           .catch(() => {
             speak("I couldn't determine your exact location, but your emergency is recorded.");
@@ -207,7 +250,6 @@ function getLocationAndSend(text) {
 }
 
 function sendToN8N(text, lat, lng, location) {
-  const webhookUrl = "https://n8n-yrm3.onrender.com/webhook/c1bbc699-15e0-4e30-816b-4ca72f4e577d";
 
   fetch(webhookUrl, {
     method: 'POST',
@@ -217,17 +259,17 @@ function sendToN8N(text, lat, lng, location) {
     body: JSON.stringify({ text, lat, lng, location })
   })
   .then(response => response.json())
-  .then(() => {
-    provideAdvice(location);
+  .then(data => {
+    // Speak the returned advice if available, fallback if not
+    if (data && data.advice) {
+      speak(data.advice);
+    } else {
+      speak("Emergency reported. Please stay alert and follow instructions.");
+    }
   })
   .catch(() => {
     speak("I failed to send the alert. Please try again.");
   });
-}
-
-function provideAdvice(location) {
-  const advice = `Emergency reported. Stay calm. If it's safe, go to a nearby open area or barangay hall in ${location}. Listen for updates.`;
-  speak(advice);
 }
 
 function speak(message) {
