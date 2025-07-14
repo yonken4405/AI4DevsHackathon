@@ -216,11 +216,6 @@ function getLocationAndSend(text) {
         fetch(apiUrl)
           .then(response => response.json())
           .then(data => {
-            // const location = (data.results[0].components.city || 
-            //                   data.results[0].components.town || 
-            //                   data.results[0].components.village || 
-            //                   data.results[0].components.state || 
-            //                   "your area");
             const components = data.results[0].components;
             const barangay = components.suburb || components.neighbourhood || components.village || components.town || "Unknown";
             const city = components.city || components.municipality || components.state || "Unknown";
